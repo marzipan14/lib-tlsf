@@ -33,6 +33,7 @@
 #include <uk/tlsf.h>
 #include <uk/alloc_impl.h>
 #include <tlsf.h>
+#include <uk/assert.h>
 
 /* malloc interface */
 
@@ -44,6 +45,16 @@ static void *uk_tlsf_malloc(struct uk_alloc *a, size_t size)
 
 static void uk_tlsf_free(struct uk_alloc *a, void *ptr)
 {
+#if CONFIG_LIBFLEXOS_DEBUG
+	/* With FlexOS we have a lot of allocators operating on the memory.
+	 * Doing these checks allows us to catch invalid free()s early on */
+	if ((uintptr_t)ptr > ((uintptr_t)a) + a->len ||
+	    (uintptr_t)ptr < (uintptr_t)a) {
+		UK_CRASH("Called with a pointer that probably doesn't belong "
+			 "to this allocator; uk_tlsf_free(%p, %p) -> not in [%p, %p]\n",
+			 a, ptr, a, (void*)(((uintptr_t)a) + a->len));
+	}
+#endif
 	tlsf_free(ptr, (void *)((uintptr_t) a + sizeof(struct uk_alloc)));
 }
 
@@ -64,6 +75,7 @@ struct uk_alloc *uk_tlsf_init(void *base, size_t len)
 
 	/* store allocator metadata on the heap, just before the memory pool */
 	a = (struct uk_alloc *)base;
+	a->len = len;
 	uk_pr_info("Initialize tlsf allocator @ 0x%" __PRIuptr ", len %"
 			__PRIsz"\n", (uintptr_t)a, len);
 
